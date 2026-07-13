@@ -42,5 +42,5 @@ Render volgt deze wrapperrepository en niet rechtstreeks private `main`. Tot de 
 
 ## Laatste gevraagde private deploy
 
-- Private commit: `78230d5c7869b48ab62211c7794e1271165629b0`
-- Doel: de centrale AI Hub, alle zeventien runtime-dossiers, de actuele Stad/OCMW Antwerpen Mail 2-template en fail-closed exacte deploymentprovenance samen uitrollen.
+- Private commit: `63f123e58647af0ed8a1aae17c5556233fe6fd7c`
+- Doel: de juridisch gecorrigeerde Stad/OCMW Antwerpen Mail 2-template, de gesynchroniseerde centrale AI Hub en de gecontroleerde Friendship-handoff samen uitrollen met fail-closed exacte deploymentprovenance.
