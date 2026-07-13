@@ -40,5 +40,5 @@ Zonder CI-inloggeheimen controleert die test alleen de ongeauthenticeerde grens.
 
 ## Laatste gevraagde private deploy
 
-- Private commit: `67648d09c8a866897f0d634895249dd2e9d5a25c`
-- Doel: gatewaycompatibiliteit behouden terwijl de wachtwoordrotatiewaarschuwing actief blijft.
+- Private commit: `93c8ef1971b2cf41739a5ca89c3e53d89dea69c4`
+- Doel: het volledige Friendship-dossier onder Publieke ruimte uitrollen, inclusief reproduceerbare PDF, Word, PowerPoint, visuele webanalyse en vier lokale ontwerpdiagrammen, zonder de recentste gateway- en handoffverbeteringen te verliezen.
