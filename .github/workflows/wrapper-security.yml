@@ -1,0 +1,55 @@
+name: Validate Render wrapper security
+
+on:
+  push:
+    branches:
+      - agent/session-secret-redeploy-v2
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wrapper-security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate shell syntax
+        run: bash -n build.sh start.sh
+
+      - name: Verify deploy key cleanup and private main clone
+        run: |
+          grep -q "trap 'rm -f" build.sh
+          grep -q 'POLITIEK_PRIVATE_BRANCH:-main' build.sh
+          grep -q 'PRIVATE_APP_COMMIT' build.sh
+
+      - name: Test ephemeral session-secret generation
+        run: |
+          mkdir -p app
+          cat > app/package.json <<'JSON'
+          {
+            "scripts": {
+              "online": "node verify-env.mjs"
+            }
+          }
+          JSON
+          cat > app/verify-env.mjs <<'JS'
+          const password = process.env.POLITIEK_ONLINE_AUTH_PASSWORD || '';
+          const secret = process.env.POLITIEK_SESSION_SECRET || '';
+          if (secret.length < 32) throw new Error('session secret too short');
+          if (secret === password) throw new Error('session secret reused login password');
+          if (process.env.POLITIEK_SESSION_VERSION !== '2026-07-13-v2') throw new Error('unexpected session version');
+          if (process.env.POLITIEK_FORCE_AUTH !== '1') throw new Error('force auth missing');
+          console.log('wrapper session environment passed');
+          JS
+          POLITIEK_ONLINE_AUTH_PASSWORD='test-password-that-is-long-enough' ./start.sh
+
+      - name: Verify secrets are never printed by wrapper scripts
+        run: |
+          ! grep -En 'echo .*POLITIEK_(SESSION_SECRET|ONLINE_AUTH_PASSWORD)|printf .*POLITIEK_(SESSION_SECRET|ONLINE_AUTH_PASSWORD)' build.sh start.sh
