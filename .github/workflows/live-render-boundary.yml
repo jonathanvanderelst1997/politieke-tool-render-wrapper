@@ -10,6 +10,11 @@ on:
       - package.json
       - README.md
       - .github/workflows/live-render-boundary.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/live-render-boundary.yml
   workflow_dispatch:
 
 permissions:
