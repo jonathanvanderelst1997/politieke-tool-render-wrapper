@@ -1,5 +1,6 @@
 name: Verify live Render boundary
 
+# Re-run marker: private commit 67648d09c8a866897f0d634895249dd2e9d5a25c
 on:
   push:
     branches:
@@ -9,6 +10,11 @@ on:
       - start.sh
       - package.json
       - README.md
+      - .github/workflows/live-render-boundary.yml
+  pull_request:
+    branches:
+      - main
+    paths:
       - .github/workflows/live-render-boundary.yml
   workflow_dispatch:
 
@@ -25,16 +31,18 @@ jobs:
           BASE_URL: https://politieke-tool-jonathan.onrender.com
         run: |
           node <<'JS'
+          import crypto from 'node:crypto';
+
           const base = process.env.BASE_URL.replace(/\/+$/, '');
           const deadline = Date.now() + 15 * 60 * 1000;
           const paths = [
-            ['/healthz', [200], 'health'],
-            ['/privacy', [200], 'privacy'],
-            ['/', [200], 'login'],
-            ['/src/data.js', [401, 404], 'blocked'],
-            ['/api/local-sync/status', [401, 404], 'blocked'],
-            ['/bijlagen/betaalhub/CODEX_BACKLOG_betaalhub_v0_4.md', [401, 404], 'blocked'],
-            ['/bijlagen/betaalhub/README.md', [401, 404], 'blocked'],
+            ['/healthz', [200], 'health', 'text/plain'],
+            ['/privacy', [200], 'privacy', 'text/html'],
+            ['/', [200], 'login', 'text/html'],
+            ['/src/data.js', [401, 404], 'blocked', 'application/javascript'],
+            ['/api/local-sync/status', [401, 404], 'blocked', 'application/json'],
+            ['/bijlagen/betaalhub/CODEX_BACKLOG_betaalhub_v0_4.md', [401, 404], 'blocked', 'text/plain'],
+            ['/bijlagen/betaalhub/README.md', [401, 404], 'blocked', 'text/plain'],
           ];
 
           async function get(path, accept = 'text/html') {
@@ -45,34 +53,52 @@ jobs:
           while (Date.now() < deadline) {
             try {
               health = await get('/healthz', 'text/plain');
-              if (health.status === 200) break;
-              console.log(`Render not ready: ${health.status}`);
+              const healthText = await health.clone().text();
+              if (health.status === 200 && healthText.trim() === 'ok') break;
+              console.log(`Render not ready: ${health.status}; health marker=${healthText.trim() === 'ok'}`);
             } catch (error) {
               console.log(`Render not ready: ${error.cause?.code || error.name}`);
             }
             await new Promise((resolve) => setTimeout(resolve, 10000));
           }
-          if (!health || health.status !== 200) throw new Error('Render did not become healthy within 15 minutes.');
-
-          for (const [path, allowed, mode] of paths) {
-            const response = path === '/healthz' ? health : await get(path, path.startsWith('/api/') ? 'application/json' : 'text/html');
-            const text = await response.text();
-            if (!allowed.includes(response.status)) {
-              throw new Error(`${path}: received ${response.status}; expected ${allowed.join(' or ')}`);
-            }
-            if (mode === 'privacy') {
-              if (!text.includes('Privacybeleid') || text.includes('centraliseren-uitbetalingskassen')) {
-                throw new Error('/privacy did not return the isolated public policy page.');
-              }
-            }
-            if (mode === 'login') {
-              if (!text.includes('Privéomgeving') || text.includes('centraliseren-uitbetalingskassen')) {
-                throw new Error('/ did not return an isolated login page.');
-              }
-            }
-            if (mode === 'blocked' && /centraliseren-uitbetalingskassen|CODEX_BACKLOG_betaalhub|Codex backlog/i.test(text)) {
-              throw new Error(`${path} leaked private or internal content.`);
-            }
-            console.log(`PASS ${path}: ${response.status}`);
+          if (!health || health.status !== 200 || (await health.clone().text()).trim() !== 'ok') {
+            throw new Error('Hardened Render gateway did not become healthy within 15 minutes.');
           }
+
+          const failures = [];
+          for (const [path, allowed, mode, accept] of paths) {
+            const response = path === '/healthz' ? health : await get(path, accept);
+            const text = await response.text();
+            const diagnostic = {
+              path,
+              status: response.status,
+              contentType: response.headers.get('content-type') || '',
+              length: text.length,
+              sha256: crypto.createHash('sha256').update(text).digest('hex'),
+              markers: {
+                healthOk: text.trim() === 'ok',
+                privacyTitle: text.includes('Privacybeleid'),
+                privateLogin: text.includes('Privéomgeving'),
+                rootElement: text.includes('id="root"'),
+                dossierMarker: text.includes('centraliseren-uitbetalingskassen'),
+                backlogMarker: /CODEX_BACKLOG_betaalhub|Codex backlog/i.test(text),
+              },
+            };
+            console.log(JSON.stringify(diagnostic));
+
+            if (!allowed.includes(response.status)) failures.push(`${path}: status ${response.status}`);
+            if (mode === 'health' && text.trim() !== 'ok') failures.push('/healthz: wrong body');
+            if (mode === 'privacy' && (!diagnostic.markers.privacyTitle || diagnostic.markers.dossierMarker || diagnostic.markers.rootElement)) {
+              failures.push('/privacy: not isolated privacy page');
+            }
+            if (mode === 'login' && (!diagnostic.markers.privateLogin || diagnostic.markers.dossierMarker || diagnostic.markers.rootElement)) {
+              failures.push('/: not isolated login page');
+            }
+            if (mode === 'blocked' && (diagnostic.markers.dossierMarker || diagnostic.markers.backlogMarker)) {
+              failures.push(`${path}: leaked private marker`);
+            }
+          }
+
+          if (failures.length) throw new Error(failures.join('; '));
+          console.log('Live Render boundary passed.');
           JS
