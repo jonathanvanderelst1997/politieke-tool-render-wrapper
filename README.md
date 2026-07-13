@@ -16,13 +16,15 @@ Publieke wrapper zonder dossierdata. Render gebruikt deze repository alleen om d
 
 `start.sh` houdt loginwachtwoord en sessieondertekening gescheiden:
 
-- wanneer `POLITIEK_SESSION_SECRET` in Render is ingesteld, wordt dat afzonderlijke geheim gebruikt;
-- wanneer het ontbreekt, genereert de wrapper bij elke processtart een willekeurig 384-bit sessiegeheim;
-- `POLITIEK_SESSION_VERSION` staat standaard op `2026-07-13-v2`;
-- een herstart of versiewijziging maakt bestaande sessies ongeldig;
-- het gegenereerde geheim wordt niet gelogd en niet naar GitHub geschreven.
+- bij iedere processtart wordt een nieuwe willekeurige 384-bit bootnonce gemaakt;
+- als Render een persistent `POLITIEK_SESSION_SECRET` bevat, dient dat alleen als HMAC-basissleutel;
+- de effectieve sessiesleutel wordt uit de basissleutel en bootnonce afgeleid en roteert dus bij elke herstart;
+- zonder persistente basissleutel wordt de willekeurige bootnonce rechtstreeks als effectieve sleutel gebruikt;
+- `POLITIEK_SESSION_VERSION` staat standaard op `2026-07-13-v3`;
+- iedere herstart of versiewijziging maakt bestaande sessies ongeldig;
+- geen enkele sleutel wordt gelogd, gecommit of op schijf opgeslagen.
 
-Voor langdurig stabiele sessies kan een afzonderlijk willekeurig `POLITIEK_SESSION_SECRET` in Render worden ingesteld. Het mag nooit gelijk zijn aan het loginwachtwoord.
+Een persistent Render-geheim blijft nuttig als extra sleutelcomponent, maar is niet vereist voor rotatie. Het mag nooit gelijk worden behandeld als het loginwachtwoord.
 
 ## Deploycontrole
 
