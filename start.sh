@@ -27,4 +27,28 @@ export POLITIEK_SESSION_HOURS="${POLITIEK_SESSION_HOURS:-8}"
 export POLITIEK_FORCE_AUTH="1"
 export POLITIEK_INTERNAL_VITE_PORT="${POLITIEK_INTERNAL_VITE_PORT:-5174}"
 
-exec npm run online
+npm run online &
+app_pid=$!
+
+stop_app() {
+  if kill -0 "$app_pid" 2>/dev/null; then
+    kill -TERM "$app_pid" 2>/dev/null || true
+    wait "$app_pid" 2>/dev/null || true
+  fi
+}
+trap stop_app TERM INT
+
+if [ "${POLITIEK_RUNTIME_SELF_TEST:-1}" != "0" ]; then
+  if ! node ../runtime-auth-self-test.mjs; then
+    echo "Production-local authentication self-test failed; stopping service." >&2
+    stop_app
+    exit 1
+  fi
+fi
+
+set +e
+wait "$app_pid"
+status=$?
+set -e
+trap - TERM INT
+exit "$status"
