@@ -7,7 +7,7 @@ Publieke wrapper zonder dossierdata. Render gebruikt deze repository alleen om d
 
 - `GH_DEPLOY_KEY_B64`
 - `POLITIEK_ONLINE_AUTH_USER`
-- `POLITIEK_ONLINE_AUTH_PASSWORD` — minimaal 16 tekens, alleen in Render bewaren
+- `POLITIEK_ONLINE_AUTH_PASSWORD` — minimaal 16 tekens aanbevolen, alleen in Render bewaren
 - `POLITIEK_META_APP_ID`
 - `POLITIEK_META_APP_SECRET`
 - `POLITIEK_META_CONFIG_ID`
@@ -37,3 +37,8 @@ npm run test:live-security
 ```
 
 Zonder CI-inloggeheimen controleert die test alleen de ongeauthenticeerde grens. Met de GitHub Actions-secrets `POLITIEK_LIVE_TEST_USER` en `POLITIEK_LIVE_TEST_PASSWORD` controleert ze ook login, CSRF en logout.
+
+## Laatste gevraagde private deploy
+
+- Private commit: `67648d09c8a866897f0d634895249dd2e9d5a25c`
+- Doel: gatewaycompatibiliteit behouden terwijl de wachtwoordrotatiewaarschuwing actief blijft.
