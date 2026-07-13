@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/session-secret-redeploy-v2
+      - agent/force-render-redeploy-v3
       - main
   pull_request:
     branches:
@@ -29,7 +30,8 @@ jobs:
           grep -q 'POLITIEK_PRIVATE_BRANCH:-main' build.sh
           grep -q 'PRIVATE_APP_COMMIT' build.sh
 
-      - name: Test ephemeral session-secret generation
+      - name: Test per-start effective session-secret rotation
+        shell: bash
         run: |
           mkdir -p app
           cat > app/package.json <<'JSON'
@@ -40,15 +42,38 @@ jobs:
           }
           JSON
           cat > app/verify-env.mjs <<'JS'
+          import crypto from 'node:crypto';
+          import fs from 'node:fs';
+
           const password = process.env.POLITIEK_ONLINE_AUTH_PASSWORD || '';
           const secret = process.env.POLITIEK_SESSION_SECRET || '';
+          const output = process.env.VERIFY_OUTPUT || '';
           if (secret.length < 32) throw new Error('session secret too short');
           if (secret === password) throw new Error('session secret reused login password');
-          if (process.env.POLITIEK_SESSION_VERSION !== '2026-07-13-v2') throw new Error('unexpected session version');
+          if (process.env.POLITIEK_SESSION_VERSION !== '2026-07-13-v3') throw new Error('unexpected session version');
           if (process.env.POLITIEK_FORCE_AUTH !== '1') throw new Error('force auth missing');
+          if (!output) throw new Error('VERIFY_OUTPUT missing');
+          fs.writeFileSync(output, crypto.createHash('sha256').update(secret).digest('hex'));
           console.log('wrapper session environment passed');
           JS
-          POLITIEK_ONLINE_AUTH_PASSWORD='test-password-that-is-long-enough' ./start.sh
+
+          base_secret='persistent-test-session-base-secret-that-is-long-enough'
+          POLITIEK_ONLINE_AUTH_PASSWORD='test-password-that-is-long-enough' \
+          POLITIEK_SESSION_SECRET="$base_secret" \
+          VERIFY_OUTPUT="$RUNNER_TEMP/session-hash-1" \
+          ./start.sh
+
+          POLITIEK_ONLINE_AUTH_PASSWORD='test-password-that-is-long-enough' \
+          POLITIEK_SESSION_SECRET="$base_secret" \
+          VERIFY_OUTPUT="$RUNNER_TEMP/session-hash-2" \
+          ./start.sh
+
+          test -s "$RUNNER_TEMP/session-hash-1"
+          test -s "$RUNNER_TEMP/session-hash-2"
+          if cmp -s "$RUNNER_TEMP/session-hash-1" "$RUNNER_TEMP/session-hash-2"; then
+            echo 'Effective session key did not rotate between starts.' >&2
+            exit 1
+          fi
 
       - name: Verify secrets are never printed by wrapper scripts
         run: |
