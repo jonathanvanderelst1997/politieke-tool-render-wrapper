@@ -1,0 +1,78 @@
+name: Verify live Render boundary
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - build.sh
+      - start.sh
+      - package.json
+      - README.md
+      - .github/workflows/live-render-boundary.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Wait for Render and verify unauthenticated boundary
+        env:
+          BASE_URL: https://politieke-tool-jonathan.onrender.com
+        run: |
+          node <<'JS'
+          const base = process.env.BASE_URL.replace(/\/+$/, '');
+          const deadline = Date.now() + 15 * 60 * 1000;
+          const paths = [
+            ['/healthz', [200], 'health'],
+            ['/privacy', [200], 'privacy'],
+            ['/', [200], 'login'],
+            ['/src/data.js', [401, 404], 'blocked'],
+            ['/api/local-sync/status', [401, 404], 'blocked'],
+            ['/bijlagen/betaalhub/CODEX_BACKLOG_betaalhub_v0_4.md', [401, 404], 'blocked'],
+            ['/bijlagen/betaalhub/README.md', [401, 404], 'blocked'],
+          ];
+
+          async function get(path, accept = 'text/html') {
+            return fetch(`${base}${path}`, { headers: { Accept: accept }, redirect: 'manual' });
+          }
+
+          let health;
+          while (Date.now() < deadline) {
+            try {
+              health = await get('/healthz', 'text/plain');
+              if (health.status === 200) break;
+              console.log(`Render not ready: ${health.status}`);
+            } catch (error) {
+              console.log(`Render not ready: ${error.cause?.code || error.name}`);
+            }
+            await new Promise((resolve) => setTimeout(resolve, 10000));
+          }
+          if (!health || health.status !== 200) throw new Error('Render did not become healthy within 15 minutes.');
+
+          for (const [path, allowed, mode] of paths) {
+            const response = path === '/healthz' ? health : await get(path, path.startsWith('/api/') ? 'application/json' : 'text/html');
+            const text = await response.text();
+            if (!allowed.includes(response.status)) {
+              throw new Error(`${path}: received ${response.status}; expected ${allowed.join(' or ')}`);
+            }
+            if (mode === 'privacy') {
+              if (!text.includes('Privacybeleid') || text.includes('centraliseren-uitbetalingskassen')) {
+                throw new Error('/privacy did not return the isolated public policy page.');
+              }
+            }
+            if (mode === 'login') {
+              if (!text.includes('Privéomgeving') || text.includes('centraliseren-uitbetalingskassen')) {
+                throw new Error('/ did not return an isolated login page.');
+              }
+            }
+            if (mode === 'blocked' && /centraliseren-uitbetalingskassen|CODEX_BACKLOG_betaalhub|Codex backlog/i.test(text)) {
+              throw new Error(`${path} leaked private or internal content.`);
+            }
+            console.log(`PASS ${path}: ${response.status}`);
+          }
+          JS
